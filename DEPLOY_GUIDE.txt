@@ -1,0 +1,72 @@
+
+# ============================================
+# 🚀 GUÍA DE DESPLIEGUE — DARIUS ALPHA TRACKER
+# ============================================
+# Sigue estos pasos EXACTOS. No necesitas saber programar.
+# Tiempo estimado: 10-15 minutos
+# ============================================
+
+# =====================
+# OPCIÓN A: RAILWAY (Recomendada - Gratis)
+# =====================
+
+# PASO 1: Crear cuenta en Railway
+# Ve a https://railway.app y regístrate con GitHub o email
+
+# PASO 2: Crear un nuevo proyecto
+# 1. Click en "New Project"
+# 2. Selecciona "Empty Project"
+# 3. Click en "Add Service" → "Empty Service"
+
+# PASO 3: Conectar tu código
+# 1. En tu servicio, ve a "Settings"
+# 2. En "Source", selecciona "Upload"
+# 3. Sube los archivos:
+#    - darius_alpha_tracker.py
+#    - requirements.txt
+
+# PASO 4: Configurar el comando de inicio
+# 1. En "Settings" → "Deploy"
+# 2. En "Start Command" escribe:
+#    python darius_alpha_tracker.py setup
+# 3. Espera a que se ejecute el setup
+# 4. Luego cambia el comando a:
+#    python darius_alpha_tracker.py
+
+# PASO 5: ¡Listo!
+# El bot estará corriendo 24/7 y recibirás alertas en Telegram
+
+# =====================
+# OPCIÓN B: RENDER (Alternativa gratuita)
+# =====================
+
+# PASO 1: Ve a https://render.com y regístrate
+# PASO 2: New → Background Worker
+# PASO 3: Sube tu código o conecta un repo de GitHub
+# PASO 4: Build Command: pip install -r requirements.txt
+# PASO 5: Start Command: python darius_alpha_tracker.py
+# PASO 6: Deploy!
+
+# =====================
+# OPCIÓN C: Tu propio PC (Para probar)
+# =====================
+
+# PASO 1: Instala Python desde https://python.org
+# PASO 2: Abre la terminal/CMD
+# PASO 3: Navega a la carpeta donde guardaste los archivos
+# PASO 4: Ejecuta:
+#    pip install requests
+# PASO 5: Primera vez (setup):
+#    python darius_alpha_tracker.py setup
+# PASO 6: Después:
+#    python darius_alpha_tracker.py
+
+# =====================
+# NOTAS IMPORTANTES
+# =====================
+# - El bot escanea cada 60 segundos
+# - Las alertas llegan a tu Telegram automáticamente
+# - Para añadir smart wallets manualmente, edita el archivo
+#   y añade direcciones en la lista SMART_WALLETS
+# - El bot crea una base de datos local (darius_alpha.db)
+#   que guarda todo el historial
