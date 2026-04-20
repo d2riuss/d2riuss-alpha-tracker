@@ -592,8 +592,7 @@ def run_setup():
     total_seed_wallets = 0
 
     for symbol, mint in SEED_TOKENS.items():
-        print(f"
-  📊 Procesando {symbol}...")
+        print(f"  📊 Procesando {symbol}...")
 
         discovered = discover_wallets_from_seed(mint, symbol)
 
