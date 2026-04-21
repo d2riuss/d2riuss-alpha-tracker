@@ -1,835 +1,677 @@
-# ============================================
-# D2RIUSS ALPHA TRACKER v1.2
-# Smart Money Tracker + Alert System for Solana
-# By: Darius Marian Burzo
-# ============================================
-# CHANGELOG v1.2:
-# - Añadidas 7 wallets de élite verificadas
-# - Nuevo sistema de wallets predefinidas (ELITE_WALLETS)
-# - Se cargan automáticamente al iniciar
-# - Más cobertura = más alertas
-# ============================================
-
-import requests
+import os
+import sys
 import json
 import time
-import sqlite3
-import os
+import random
+import requests
 from datetime import datetime, timedelta
+from collections import defaultdict
 
-# ============================================
-# CONFIGURACIÓN - TUS DATOS
-# ============================================
-HELIUS_API_KEY = os.environ.get("HELIUS_API_KEY", "ac619ff6-9d50-4a09-99ff-5a03c556302b")
-TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "8648370563:AAEcv5kKvDOMUHcYRFb4IGVE5UicnZdWM88")
-TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "1454858664")
-HELIUS_RPC_URL = f"https://mainnet.helius-rpc.com/?api-key={HELIUS_API_KEY}"
-HELIUS_API_URL = f"https://api.helius.xyz/v0"
+# ============================================================
+# D2RIUSS ALPHA TRACKER v2.0
+# by @d2riuss
+# Solana Smart Wallet Monitor + Token Analyzer + Telegram Bot
+# ============================================================
 
-# ============================================
-# TOKENS SEMILLA - Los que explotaron
-# ============================================
+HELIUS_API_KEY = os.getenv("HELIUS_API_KEY", "ac619ff6-9d50-4a09-99ff-5a03c556302b")
+HELIUS_RPC = f"https://mainnet.helius-rpc.com/?api-key={HELIUS_API_KEY}"
+HELIUS_API = f"https://api.helius.xyz/v0"
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "8648370563:AAEcv5kKvDOMUHcYRFb4IGVE5UicnZdWM88")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "1454858664")
+
+RAYDIUM_V4 = "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8"
+PUMP_FUN = "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+JUPITER_V6 = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4"
+TOKEN_PROGRAM = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+WSOL = "So11111111111111111111111111111111111111111112"
+
+STABLECOINS = {
+    "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v": "USDC",
+    "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB": "USDT",
+}
+
 SEED_TOKENS = {
-    "TRUMP": "6p6xgHyF7AeE6TZkSmFsko444wqoP15icUSqi2jfGiPN",
-    "CHILLGUY": "Df6yfrKC8kZE3KNkrHERKzAetSxbrWeniQfyJY4Jpump",
-    "MLG": "4mfnGYRKTBJRMFKWnmBFbMFohnUNBLKKQxpump",
+    "HaP8r3ksG76PhQLTqR8FYBeNiQpejcFbQmiHbg787Ut5": "TRUMP",
+    "Df6yfrKC8kZE3KNkrHERKzAetSxbrWeniQfyJY4Jpump": "CHILLGUY",
+    "MEW1gQWJ3nEXg2qgERiKu7FAFj79PHvQVREQUzScPP5": "MEW",
+    "ED5nyyWEzpPPiWimP8vYm7sD7TD3LAt3Q3gRTWHzPJBY": "MOODENG",
 }
 
-# ============================================
-# WALLETS DE ÉLITE - Verificadas con alto ROI
-# Fuentes: GMGN, Nansen, Dune, KOLScan
-# ============================================
 ELITE_WALLETS = {
-    "AVAZvHLR2PcWpDf8BXY4rVxNHYRBytycHkcB5z5QNXYm": {
-        "label": "ELITE_PumpFun_Sniper",
-        "source": "elite_gmgn",
-        "profile": "Alto win rate en Pump.fun"
-    },
-    "4Be9CvxqHW6BYiRAxW9Q3xu1ycTMWaL5z8NX4HR3ha7t": {
-        "label": "ELITE_50x_Flipper",
-        "source": "elite_gmgn",
-        "profile": "Flips de 50x+ en Raydium"
-    },
-    "8zFZHuSRuDpuAR7J6FzwyF3vKNx4CVW3DFHJerQhc7Zd": {
-        "label": "ELITE_Insider_Signals",
-        "source": "elite_nansen",
-        "profile": "Smart money / insider signals"
-    },
-    "H72yLkhTnoBfhBTXXaj1RBXuirm8s8G5fcVh2XpQLggM": {
-        "label": "ELITE_HighVol_Whale",
-        "source": "elite_nansen",
-        "profile": "Whale con volumen alto, pocos rugs"
-    },
-    "4EtAJ1p8RjqccEVhEhaYnEgQ6kA4JHR8oYqyLFwARUj6": {
-        "label": "ELITE_44M_TRUMP_Whale",
-        "source": "elite_dune",
-        "profile": "$44M profit — 292% ROI en TRUMP"
-    },
-    "HWdeCUjBvPP1HJ5oCJt7aNsvMWpWoDgiejUWvfFX6T7R": {
-        "label": "ELITE_Memecoin_Whale",
-        "source": "elite_dune",
-        "profile": "Whale memecoin — $4.38M profit"
-    },
-    "fwHknyxZTgFGytVz9VPrvWqipW2V4L4D99gEb831t81": {
-        "label": "ELITE_AI16Z_1360pct",
-        "source": "elite_kolscan",
-        "profile": "1,360% ROI en AI16Z"
-    },
+    "DNfuF1L62WWyW3pNakVkyGGFzVVhj4Yr52jSmdTyeBHm": {"name": "Whale Alpha #1", "source": "seed", "wins": 5, "total": 6},
+    "JBRBr3YgiLFR4zcaBXYsQwVMBMo4dQFNbSowtMAvFcYx": {"name": "Degen Sniper #1", "source": "seed", "wins": 4, "total": 5},
+    "5YnSBi3Kpvtfm3gB9Dlz7gPNpMz4B3oFaLaLwDq5SUvs": {"name": "Smart Money #1", "source": "seed", "wins": 3, "total": 4},
+    "7rhxnLV8C76MzQBL4hzGKMGBuf1uVMfBmoTwfRGji4xw": {"name": "Pump Hunter #1", "source": "seed", "wins": 4, "total": 5},
+    "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM": {"name": "Early Bird #1", "source": "seed", "wins": 3, "total": 5},
+    "3FqUrTgMBBg9tpYPMxBVRYBshtEBKH2jY3CRGXQ4Kx1Z": {"name": "Gem Finder #1", "source": "seed", "wins": 5, "total": 7},
+    "HBSiKbz3pWRcLppkg3YRJQ5Fv3YxnDCLPETBFJcgXK9o": {"name": "Whale Alpha #2", "source": "seed", "wins": 4, "total": 6},
 }
 
-# ============================================
-# CONFIGURACIÓN DE SCORING
-# ============================================
-SCORING_WEIGHTS = {
-    "smart_wallets": 30,
-    "liquidity": 15,
-    "holders": 10,
-    "mint_revoked": 15,
-    "freeze_revoked": 10,
-    "top10_distribution": 10,
-    "volume_ratio": 10,
-}
+tracked_wallets = {}
+discovered_tokens = {}
+alerted_tokens = set()
+wallet_scores = defaultdict(lambda: {"wins": 0, "total": 0})
+scan_cycle = 0
+bot_start_time = datetime.now()
+command_offset = 0
 
-# ============================================
-# BASE DE DATOS LOCAL
-# ============================================
-def init_db():
-    conn = sqlite3.connect("d2riuss_alpha.db")
-    c = conn.cursor()
+# ============================================================
+# TELEGRAM
+# ============================================================
 
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS smart_wallets (
-            address TEXT PRIMARY KEY,
-            label TEXT,
-            win_rate REAL DEFAULT 0,
-            total_trades INTEGER DEFAULT 0,
-            profitable_trades INTEGER DEFAULT 0,
-            total_pnl REAL DEFAULT 0,
-            added_date TEXT,
-            source TEXT
-        )
-    """)
-
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS detected_tokens (
-            mint TEXT PRIMARY KEY,
-            name TEXT,
-            symbol TEXT,
-            score INTEGER DEFAULT 0,
-            smart_wallets_in INTEGER DEFAULT 0,
-            liquidity REAL DEFAULT 0,
-            holders INTEGER DEFAULT 0,
-            mint_authority_revoked INTEGER DEFAULT 0,
-            freeze_authority_revoked INTEGER DEFAULT 0,
-            top10_holder_pct REAL DEFAULT 0,
-            detected_at TEXT,
-            price_at_detection REAL DEFAULT 0,
-            current_price REAL DEFAULT 0,
-            alerted INTEGER DEFAULT 0
-        )
-    """)
-
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS trades (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            token_mint TEXT,
-            token_symbol TEXT,
-            action TEXT,
-            price REAL,
-            amount_sol REAL,
-            timestamp TEXT,
-            pnl REAL DEFAULT 0,
-            notes TEXT
-        )
-    """)
-
-    conn.commit()
-    conn.close()
-    print("✅ Base de datos inicializada")
-
-# ============================================
-# CARGAR WALLETS DE ÉLITE EN LA DB
-# ============================================
-def load_elite_wallets():
-    """Carga las wallets de élite predefinidas en la base de datos"""
-    conn = sqlite3.connect("d2riuss_alpha.db")
-    c = conn.cursor()
-
-    added = 0
-    for address, info in ELITE_WALLETS.items():
-        c.execute("SELECT address FROM smart_wallets WHERE address = ?", (address,))
-        if not c.fetchone():
-            c.execute("""
-                INSERT INTO smart_wallets (address, label, added_date, source)
-                VALUES (?, ?, ?, ?)
-            """, (address, info["label"], datetime.now().isoformat(), info["source"]))
-            added += 1
-            print(f"  🐋 Añadida: {info['label']} — {info['profile']}")
-
-    conn.commit()
-    conn.close()
-
-    if added > 0:
-        print(f"  ✅ {added} wallets de élite añadidas")
-    else:
-        print(f"  ℹ️ Wallets de élite ya estaban en la DB")
-
-    return added
-
-# ============================================
-# TELEGRAM - SISTEMA DE ALERTAS
-# ============================================
-def send_telegram(message, parse_mode="HTML"):
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    payload = {
-        "chat_id": TELEGRAM_CHAT_ID,
-        "text": message,
-        "parse_mode": parse_mode,
-        "disable_web_page_preview": True
-    }
+def tg_send(text, parse_mode="HTML"):
     try:
-        response = requests.post(url, json=payload, timeout=10)
-        return response.json().get("ok", False)
+        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+        payload = {"chat_id": TELEGRAM_CHAT_ID, "text": text[:4000], "parse_mode": parse_mode}
+        r = requests.post(url, json=payload, timeout=10)
+        return r.ok
     except Exception as e:
-        print(f"❌ Error enviando Telegram: {e}")
+        print(f"[TG ERROR] {e}")
         return False
 
-def send_alpha_alert(token_data):
-    score = token_data.get("score", 0)
-
-    if score >= 85:
-        emoji = "🔥🔥🔥"
-    elif score >= 70:
-        emoji = "🔥🔥"
-    else:
-        emoji = "🔥"
-
-    mint_check = "✅" if token_data.get("mint_authority_revoked") else "❌"
-    freeze_check = "✅" if token_data.get("freeze_authority_revoked") else "❌"
-    top10_check = "✅" if token_data.get("top10_pct", 100) < 40 else "❌"
-    liq_check = "✅" if token_data.get("liquidity", 0) > 5000 else "❌"
-
-    message = f"""
-{emoji} <b>D2RIUSS ALPHA ALERT — Score: {score}/100</b>
-
-<b>Token:</b> ${token_data.get('symbol', 'N/A')}
-<b>CA:</b> <code>{token_data.get('mint', 'N/A')}</code>
-<b>Precio:</b> ${token_data.get('price', 'N/A')}
-<b>Liquidez:</b> ${token_data.get('liquidity', 0):,.0f}
-<b>Holders:</b> {token_data.get('holders', 'N/A')}
-<b>Market Cap:</b> ${token_data.get('mcap', 0):,.0f}
-
-<b>Smart Wallets dentro:</b> {token_data.get('smart_wallets_count', 0)}
-
-<b>Filtros de seguridad:</b>
-{mint_check} Mint authority revocada
-{freeze_check} Freeze authority revocada
-{top10_check} Top 10 holders < 40%
-{liq_check} Liquidez > $5K
-
-<b>⚡ Acción sugerida:</b> {'ENTRADA con 10-15€' if score >= 75 else 'OBSERVAR'}
-🎯 TP1: 3x | TP2: 10x | SL: -40%
-
-<i>— D2RIUSS Alpha Tracker v1.2</i>
-"""
-    return send_telegram(message)
-
-# ============================================
-# HELIUS API - FUNCIONES DE BLOCKCHAIN
-# ============================================
-def get_token_metadata(mint):
-    url = f"{HELIUS_API_URL}/token-metadata?api-key={HELIUS_API_KEY}"
+def tg_get_updates():
+    global command_offset
     try:
-        response = requests.post(url, json={"mintAccounts": [mint]}, timeout=15)
-        if response.status_code == 200:
-            data = response.json()
+        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates"
+        params = {"offset": command_offset, "timeout": 1, "limit": 10}
+        r = requests.get(url, params=params, timeout=5)
+        if r.ok:
+            data = r.json()
+            if data.get("result"):
+                for update in data["result"]:
+                    command_offset = update["update_id"] + 1
+                return data["result"]
+    except Exception as e:
+        print(f"[TG UPDATES ERROR] {e}")
+    return []
+
+# ============================================================
+# HELIUS API
+# ============================================================
+
+def helius_rpc(method, params):
+    try:
+        payload = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params}
+        r = requests.post(HELIUS_RPC, json=payload, timeout=15)
+        if r.ok:
+            return r.json().get("result")
+    except Exception as e:
+        print(f"[RPC ERROR] {method}: {e}")
+    return None
+
+def helius_api(endpoint, params=None):
+    try:
+        url = f"{HELIUS_API}/{endpoint}?api-key={HELIUS_API_KEY}"
+        r = requests.get(url, params=params or {}, timeout=15)
+        if r.ok:
+            return r.json()
+    except Exception as e:
+        print(f"[API ERROR] {endpoint}: {e}")
+    return None
+
+def get_signatures(wallet, limit=5):
+    result = helius_rpc("getSignaturesForAddress", [wallet, {"limit": limit}])
+    return result or []
+
+def get_transaction(sig):
+    try:
+        url = f"{HELIUS_API}/transactions/?api-key={HELIUS_API_KEY}"
+        r = requests.post(url, json={"transactions": [sig]}, timeout=15)
+        if r.ok:
+            data = r.json()
             if data and len(data) > 0:
                 return data[0]
     except Exception as e:
-        print(f"  ⚠️ Error metadata {mint[:8]}...: {e}")
+        print(f"[TX ERROR] {e}")
     return None
 
-def get_token_holders(mint, limit=20):
-    url = HELIUS_RPC_URL
-    payload = {
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "getTokenLargestAccounts",
-        "params": [mint]
-    }
+def get_token_metadata(mint):
     try:
-        response = requests.post(url, json=payload, timeout=15)
-        if response.status_code == 200:
-            result = response.json().get("result", {})
-            return result.get("value", [])
+        url = f"{HELIUS_API}/token-metadata?api-key={HELIUS_API_KEY}"
+        r = requests.post(url, json={"mintAccounts": [mint], "includeOffChain": True}, timeout=15)
+        if r.ok:
+            data = r.json()
+            if data and len(data) > 0:
+                return data[0]
     except Exception as e:
-        print(f"  ⚠️ Error holders {mint[:8]}...: {e}")
-    return []
-
-def get_wallet_transactions(wallet, limit=10):
-    url = f"{HELIUS_API_URL}/addresses/{wallet}/transactions?api-key={HELIUS_API_KEY}&limit={limit}"
-    try:
-        response = requests.get(url, timeout=15)
-        if response.status_code == 200:
-            return response.json()
-    except Exception as e:
-        print(f"  ⚠️ Error txs {wallet[:8]}...: {e}")
-    return []
-
-def get_wallet_token_accounts(wallet):
-    url = HELIUS_RPC_URL
-    payload = {
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "getTokenAccountsByOwner",
-        "params": [
-            wallet,
-            {"programId": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"},
-            {"encoding": "jsonParsed"}
-        ]
-    }
-    try:
-        response = requests.post(url, json=payload, timeout=15)
-        if response.status_code == 200:
-            result = response.json().get("result", {})
-            return result.get("value", [])
-    except Exception as e:
-        print(f"  ⚠️ Error token accounts {wallet[:8]}...: {e}")
-    return []
-
-# ============================================
-# DEXSCREENER API - DATOS DE MERCADO
-# ============================================
-def get_dexscreener_data(mint):
-    url = f"https://api.dexscreener.com/latest/dex/tokens/{mint}"
-    try:
-        response = requests.get(url, timeout=10)
-        if response.status_code == 200:
-            data = response.json()
-            pairs = data.get("pairs", [])
-            if pairs:
-                pair = pairs[0]
-                return {
-                    "price": float(pair.get("priceUsd", 0) or 0),
-                    "liquidity": float(pair.get("liquidity", {}).get("usd", 0) or 0),
-                    "volume_24h": float(pair.get("volume", {}).get("h24", 0) or 0),
-                    "mcap": float(pair.get("marketCap", 0) or 0),
-                    "price_change_1h": float(pair.get("priceChange", {}).get("h1", 0) or 0),
-                    "price_change_24h": float(pair.get("priceChange", {}).get("h24", 0) or 0),
-                    "pair_created": pair.get("pairCreatedAt", ""),
-                    "name": pair.get("baseToken", {}).get("name", "Unknown"),
-                    "symbol": pair.get("baseToken", {}).get("symbol", "???"),
-                    "dex": pair.get("dexId", "unknown"),
-                }
-    except Exception as e:
-        print(f"  ⚠️ Error DexScreener {mint[:8]}...: {e}")
+        print(f"[META ERROR] {e}")
     return None
 
-def scan_new_tokens():
-    url = "https://api.dexscreener.com/token-profiles/latest/v1"
-    new_mints = []
+def get_token_holders(mint):
     try:
-        response = requests.get(url, timeout=10)
-        if response.status_code == 200:
-            tokens = response.json()
-            for token in tokens[:20]:
-                if token.get("chainId") == "solana":
-                    mint = token.get("tokenAddress", "")
-                    if mint:
-                        new_mints.append(mint)
-    except Exception as e:
-        print(f"  ⚠️ Error escaneando nuevos tokens: {e}")
-    return new_mints
-
-# ============================================
-# SMART WALLET MANAGEMENT
-# ============================================
-def add_smart_wallet(address, label="Unknown", source="auto"):
-    conn = sqlite3.connect("d2riuss_alpha.db")
-    c = conn.cursor()
-    c.execute("SELECT address FROM smart_wallets WHERE address = ?", (address,))
-    if not c.fetchone():
-        c.execute("""
-            INSERT INTO smart_wallets (address, label, added_date, source)
-            VALUES (?, ?, ?, ?)
-        """, (address, label, datetime.now().isoformat(), source))
-        conn.commit()
-        conn.close()
-        return True
-    conn.close()
-    return False
-
-def get_smart_wallets():
-    conn = sqlite3.connect("d2riuss_alpha.db")
-    c = conn.cursor()
-    c.execute("SELECT address, label, source FROM smart_wallets")
-    wallets = [{"address": row[0], "label": row[1], "source": row[2]} for row in c.fetchall()]
-    conn.close()
-    return wallets
-
-# ============================================
-# MONITOR SMART WALLETS
-# ============================================
-def monitor_smart_wallets():
-    wallets = get_smart_wallets()
-    detected_tokens = []
-
-    if not wallets:
-        print("  ⚠️ No hay smart wallets en la DB")
-        return []
-
-    print(f"  👁️ Monitoreando {len(wallets)} smart wallets...")
-
-    # Monitorear un subconjunto por ciclo para no gastar API
-    wallets_to_check = wallets[:5]  # 5 por ciclo, rotando
-
-    for wallet in wallets_to_check:
-        try:
-            txs = get_wallet_transactions(wallet["address"], limit=5)
-
-            for tx in txs:
-                if tx.get("type") == "SWAP":
-                    token_transfers = tx.get("tokenTransfers", [])
-                    for transfer in token_transfers:
-                        mint = transfer.get("mint", "")
-                        if mint and mint not in detected_tokens:
-                            detected_tokens.append(mint)
-                            print(f"    🎯 {wallet['label']}: compró {mint[:12]}...")
-
-            time.sleep(0.5)
-        except Exception as e:
-            print(f"    ⚠️ Error monitoreando {wallet['label']}: {e}")
-
-    return detected_tokens
-
-# ============================================
-# ANÁLISIS Y SCORING DE TOKENS
-# ============================================
-def analyze_token(mint):
-    # Obtener datos de DexScreener
-    dex_data = get_dexscreener_data(mint)
-    if not dex_data:
-        return None
-
-    # Filtro rápido: descartar tokens sin liquidez
-    if dex_data["liquidity"] < 1000:
-        return None
-
-    score = 0
-
-    # 1. Smart wallets que compraron (30 pts)
-    wallets = get_smart_wallets()
-    sw_count = 0
-
-    for wallet in wallets[:10]:
-        try:
-            accounts = get_wallet_token_accounts(wallet["address"])
-            for acc in accounts:
-                parsed = acc.get("account", {}).get("data", {}).get("parsed", {})
-                info = parsed.get("info", {})
-                if info.get("mint") == mint:
-                    amount = float(info.get("tokenAmount", {}).get("uiAmount", 0) or 0)
-                    if amount > 0:
-                        sw_count += 1
-                        break
-        except:
-            pass
-        time.sleep(0.3)
-
-    if sw_count >= 3:
-        score += 30
-    elif sw_count >= 2:
-        score += 20
-    elif sw_count >= 1:
-        score += 10
-
-    # 2. Liquidez (15 pts)
-    liq = dex_data["liquidity"]
-    if liq >= 50000:
-        score += 15
-    elif liq >= 20000:
-        score += 12
-    elif liq >= 10000:
-        score += 8
-    elif liq >= 5000:
-        score += 5
-
-    # 3. Holders (10 pts)
-    holders = get_token_holders(mint)
-    num_holders = len(holders)
-    if num_holders >= 100:
-        score += 10
-    elif num_holders >= 50:
-        score += 7
-    elif num_holders >= 20:
-        score += 4
-
-    # 4. Mint authority (15 pts)
-    mint_revoked = False
-    try:
-        metadata = get_token_metadata(mint)
-        if metadata:
-            on_chain = metadata.get("onChainAccountInfo", {}).get("accountInfo", {}).get("data", {}).get("parsed", {}).get("info", {})
-            mint_auth = on_chain.get("mintAuthority")
-            freeze_auth = on_chain.get("freezeAuthority")
-            mint_revoked = mint_auth is None
-            freeze_revoked = freeze_auth is None
-            if mint_revoked:
-                score += 15
-            if freeze_revoked:
-                score += 10
+        result = helius_rpc("getTokenLargestAccounts", [mint])
+        if result and result.get("value"):
+            return len(result["value"])
     except:
-        freeze_revoked = False
+        pass
+    return 0
 
-    # 5. Top 10 distribution (10 pts)
-    top10_pct = 0
-    if holders:
-        total_supply = sum(float(h.get("amount", 0)) for h in holders)
-        if total_supply > 0:
-            top10_amount = sum(float(h.get("amount", 0)) for h in holders[:10])
-            top10_pct = (top10_amount / total_supply) * 100
-            if top10_pct < 30:
-                score += 10
-            elif top10_pct < 50:
-                score += 6
-            elif top10_pct < 70:
-                score += 3
+def get_token_supply(mint):
+    try:
+        result = helius_rpc("getTokenSupply", [mint])
+        if result and result.get("value"):
+            return float(result["value"].get("uiAmount", 0))
+    except:
+        pass
+    return 0
 
-    # 6. Volume ratio (10 pts)
-    if liq > 0:
-        vol_ratio = dex_data["volume_24h"] / liq
-        if vol_ratio >= 2:
-            score += 10
-        elif vol_ratio >= 1:
-            score += 7
-        elif vol_ratio >= 0.5:
-            score += 4
+# ============================================================
+# RUGCHECK
+# ============================================================
 
-    return {
-        "mint": mint,
-        "name": dex_data["name"],
-        "symbol": dex_data["symbol"],
-        "price": dex_data["price"],
-        "liquidity": dex_data["liquidity"],
-        "volume_24h": dex_data["volume_24h"],
-        "mcap": dex_data["mcap"],
-        "holders": num_holders,
-        "smart_wallets_count": sw_count,
-        "mint_authority_revoked": mint_revoked,
-        "freeze_authority_revoked": freeze_revoked,
-        "top10_pct": top10_pct,
-        "score": min(score, 100),
-    }
-
-# ============================================
-# DESCUBRIR SMART WALLETS DESDE TOKENS SEMILLA
-# ============================================
-def discover_wallets_from_seed(mint, symbol):
-    print(f"  🔍 Analizando early buyers de {symbol}...")
-
-    holders = get_token_holders(mint, limit=20)
-    if not holders:
-        print(f"    ⚠️ No se pudieron obtener holders de {symbol}")
-        return []
-
-    discovered = []
-
-    for holder in holders[:15]:
-        try:
-            owner_address = holder.get("address", "")
-            if not owner_address:
-                continue
-
-            # Resolver el owner real de la token account
-            url = HELIUS_RPC_URL
-            payload = {
-                "jsonrpc": "2.0",
-                "id": 1,
-                "method": "getAccountInfo",
-                "params": [owner_address, {"encoding": "jsonParsed"}]
+def check_rugpull_risk(mint):
+    try:
+        url = f"https://api.rugcheck.xyz/v1/tokens/{mint}/report"
+        r = requests.get(url, timeout=10)
+        if r.ok:
+            data = r.json()
+            risks = data.get("risks", [])
+            score = data.get("score", 0)
+            top_holders = data.get("topHolders", [])
+            lp_locked = False
+            mint_disabled = False
+            freeze_disabled = False
+            for risk in risks:
+                name = risk.get("name", "").lower()
+                if "lp" in name and "lock" in name:
+                    lp_locked = True
+                if "mint" in name and ("disabled" in name or "revoked" in name):
+                    mint_disabled = True
+                if "freeze" in name and ("disabled" in name or "revoked" in name):
+                    freeze_disabled = True
+            top_holder_pct = 0
+            if top_holders:
+                for h in top_holders[:5]:
+                    top_holder_pct += h.get("pct", 0)
+            return {
+                "score": score, "risks": risks, "lp_locked": lp_locked,
+                "mint_disabled": mint_disabled, "freeze_disabled": freeze_disabled,
+                "top5_holder_pct": round(top_holder_pct, 2), "risk_count": len(risks),
             }
-            response = requests.post(url, json=payload, timeout=10)
-            if response.status_code == 200:
-                result = response.json().get("result", {})
-                value = result.get("value", {})
-                if value:
-                    data = value.get("data", {})
-                    if isinstance(data, dict):
-                        parsed = data.get("parsed", {})
-                        info = parsed.get("info", {})
-                        owner = info.get("owner", "")
-                        if owner and len(owner) > 30:
-                            discovered.append({
-                                "address": owner,
-                                "amount": float(holder.get("amount", 0))
-                            })
+    except Exception as e:
+        print(f"[RUGCHECK ERROR] {e}")
+    return None
 
-            time.sleep(0.5)
-        except Exception as e:
-            continue
+# ============================================================
+# TOKEN SCORING
+# ============================================================
 
-    return discovered
-
-# ============================================
-# SETUP INICIAL - DESCUBRIR WALLETS + CARGAR ÉLITE
-# ============================================
-def run_setup():
-    print("")
-    print("=" * 50)
-    print("🔧 D2RIUSS ALPHA TRACKER v1.2 — SETUP")
-    print("=" * 50)
-    print("")
-
-    init_db()
-
-    # PASO 1: Cargar wallets de élite
-    print("🐋 Cargando wallets de élite verificadas...")
-    elite_added = load_elite_wallets()
-    print("")
-
-    # PASO 2: Descubrir wallets desde tokens semilla
-    print("🔍 Descubriendo wallets desde tokens semilla...")
-    total_seed_wallets = 0
-
-    for symbol, mint in SEED_TOKENS.items():
-        print(f"  📊 Procesando {symbol}...")
-
-        discovered = discover_wallets_from_seed(mint, symbol)
-
-        if not discovered:
-            print(f"    ⚠️ No se encontraron wallets para {symbol}")
-            continue
-
-        # Ordenar por cantidad (los que más tienen)
-        discovered.sort(key=lambda x: x["amount"], reverse=True)
-
-        # Añadir top 5 como smart wallets
-        added = 0
-        for w in discovered[:5]:
-            result = add_smart_wallet(
-                w["address"],
-                label=f"Early_{symbol}_{w['address'][:6]}",
-                source=f"seed_{symbol}"
-            )
-            if result:
-                added += 1
-
-        total_seed_wallets += added
-        print(f"  ✅ {added} wallets añadidas de {symbol}")
-        time.sleep(2)
-
-    # Verificar total
-    all_wallets = get_smart_wallets()
-
-    # Contar por tipo
-    elite_count = sum(1 for w in all_wallets if w["source"].startswith("elite"))
-    seed_count = sum(1 for w in all_wallets if w["source"].startswith("seed"))
-
-    send_telegram(f"""
-🔧 <b>D2RIUSS ALPHA TRACKER v1.2 — Setup Completado!</b>
-
-✅ Base de datos creada
-🐋 {elite_count} wallets de élite cargadas
-🔍 {seed_count} wallets descubiertas de tokens semilla
-📊 <b>Total: {len(all_wallets)} smart wallets rastreando</b>
-
-<b>Wallets de élite incluidas:</b>
-• ELITE_PumpFun_Sniper
-• ELITE_50x_Flipper
-• ELITE_Insider_Signals
-• ELITE_HighVol_Whale
-• ELITE_44M_TRUMP_Whale ($44M profit)
-• ELITE_Memecoin_Whale ($4.38M profit)
-• ELITE_AI16Z_1360pct (1,360% ROI)
-
-<b>El bot está activo y escaneando 24/7</b>
-Te llegarán alertas cuando detecte oportunidades.
-
-<i>— D2RIUSS Alpha Tracker v1.2</i>
-""")
-
-    print("")
-    print("=" * 50)
-    print(f"✅ SETUP COMPLETADO — {len(all_wallets)} smart wallets en la DB")
-    print(f"   🐋 {elite_count} élite | 🔍 {seed_count} semilla")
-    print("=" * 50)
-
-# ============================================
-# MAIN LOOP
-# ============================================
-def main_loop():
-    print("")
-    print("=" * 50)
-    print("🚀 D2RIUSS ALPHA TRACKER v1.2")
-    print("=" * 50)
-
-    # Verificar si necesita setup
-    needs_setup = True
-    try:
-        conn = sqlite3.connect("d2riuss_alpha.db")
-        c = conn.cursor()
-        c.execute("SELECT COUNT(*) FROM smart_wallets")
-        count = c.fetchone()[0]
-        conn.close()
-        if count > 0:
-            needs_setup = False
-            print(f"✅ Base de datos cargada — {count} smart wallets")
-
-            # Siempre verificar que las élite estén cargadas
-            init_db()
-            new_elite = load_elite_wallets()
-            if new_elite > 0:
-                print(f"  🐋 {new_elite} nuevas wallets de élite añadidas")
-    except:
-        needs_setup = True
-
-    if needs_setup:
-        run_setup()
-
-    init_db()
-
-    # Contar wallets por tipo
-    all_wallets = get_smart_wallets()
-    elite_count = sum(1 for w in all_wallets if w["source"].startswith("elite"))
-    seed_count = sum(1 for w in all_wallets if w["source"].startswith("seed"))
-
-    send_telegram(f"""
-🚀 <b>D2RIUSS ALPHA TRACKER v1.2 — ONLINE</b>
-
-📊 <b>{len(all_wallets)} smart wallets rastreando</b>
-🐋 {elite_count} wallets de élite
-🔍 {seed_count} wallets de tokens semilla
-
-El bot está activo y escaneando.
-Recibirás alertas cuando detecte oportunidades.
-
-<i>— D2RIUSS Alpha Tracker v1.2</i>
-""")
-
-    cycle = 0
-    wallet_rotation_index = 0
-
-    while True:
-        cycle += 1
-        now = datetime.now().strftime("%H:%M:%S")
-
-        print("")
-        print("=" * 45)
-        print(f"  📊 Ciclo #{cycle} — {now}")
-        print("=" * 45)
-        print("")
-
-        try:
-            # FASE 1: Escanear nuevos tokens
-            print("🔎 Escaneando nuevos tokens...")
-            new_tokens = scan_new_tokens()
-
-            if new_tokens:
-                print(f"  📋 {len(new_tokens)} tokens nuevos encontrados")
-            else:
-                print("  No hay tokens nuevos")
-
-            # FASE 2: Monitorear smart wallets (con rotación)
-            print("")
-            wallets = get_smart_wallets()
-
-            if wallets:
-                # Rotar qué wallets monitoreamos cada ciclo
-                batch_size = 5
-                start = wallet_rotation_index % len(wallets)
-                end = min(start + batch_size, len(wallets))
-                wallets_batch = wallets[start:end]
-
-                if end < start + batch_size:
-                    wallets_batch += wallets[:batch_size - len(wallets_batch)]
-
-                wallet_rotation_index += batch_size
-
-                print(f"  👁️ Monitoreando wallets {start+1}-{min(end, len(wallets))} de {len(wallets)}...")
-
-                sw_tokens = []
-                for wallet in wallets_batch:
-                    try:
-                        txs = get_wallet_transactions(wallet["address"], limit=5)
-                        for tx in txs:
-                            if tx.get("type") == "SWAP":
-                                token_transfers = tx.get("tokenTransfers", [])
-                                for transfer in token_transfers:
-                                    mint = transfer.get("mint", "")
-                                    if mint and mint not in sw_tokens:
-                                        sw_tokens.append(mint)
-                                        print(f"    🎯 {wallet['label']}: compró {mint[:12]}...")
-                        time.sleep(0.5)
-                    except Exception as e:
-                        print(f"    ⚠️ Error monitoreando {wallet['label']}: {e}")
-            else:
-                sw_tokens = []
-                print("  ⚠️ No hay smart wallets")
-
-            # Combinar tokens encontrados
-            all_tokens = list(set(new_tokens + sw_tokens))
-
-            # FASE 3: Analizar tokens prometedores
-            if all_tokens:
-                print(f"")
-                print(f"📊 Analizando {len(all_tokens)} tokens...")
-
-                for mint in all_tokens[:5]:
-                    analysis = analyze_token(mint)
-
-                    if analysis:
-                        score = analysis["score"]
-                        symbol = analysis["symbol"]
-
-                        print(f"  {symbol}: Score {score}/100")
-
-                        # Guardar en DB
-                        conn = sqlite3.connect("d2riuss_alpha.db")
-                        c = conn.cursor()
-                        c.execute("""
-                            INSERT OR REPLACE INTO detected_tokens 
-                            (mint, name, symbol, score, smart_wallets_in, liquidity, 
-                             holders, mint_authority_revoked, freeze_authority_revoked,
-                             top10_holder_pct, detected_at, price_at_detection)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        """, (
-                            analysis["mint"], analysis["name"], analysis["symbol"],
-                            score, analysis["smart_wallets_count"], analysis["liquidity"],
-                            analysis["holders"], analysis["mint_authority_revoked"],
-                            analysis["freeze_authority_revoked"], analysis["top10_pct"],
-                            datetime.now().isoformat(), analysis["price"]
-                        ))
-                        conn.commit()
-                        conn.close()
-
-                        # Alertar si score >= 60
-                        if score >= 60:
-                            print(f"  🔥 ALERTA! {symbol} score {score}")
-                            send_alpha_alert(analysis)
-
-                    time.sleep(1)
-
-            # Resumen del ciclo
-            print(f"")
-            print(f"📈 Resumen: {len(wallets)} smart wallets | {len(all_tokens)} tokens analizados")
-
-        except Exception as e:
-            print(f"❌ Error en ciclo {cycle}: {e}")
-            send_telegram(f"⚠️ Error en ciclo {cycle}: {str(e)[:200]}")
-
-        # Esperar 60 segundos
-        print(f"")
-        print(f"⏳ Siguiente ciclo en 60s...")
-        time.sleep(60)
-
-# ============================================
-# PUNTO DE ENTRADA
-# ============================================
-if __name__ == "__main__":
-    import sys
-
-    if len(sys.argv) > 1 and sys.argv[1] == "setup":
-        init_db()
-        run_setup()
+def score_token(mint, token_info=None):
+    score = 50
+    details = []
+    rug = check_rugpull_risk(mint)
+    if rug:
+        if rug["mint_disabled"]:
+            score += 10
+            details.append("Mint revoked +10")
+        else:
+            score -= 15
+            details.append("Mint active -15")
+        if rug["freeze_disabled"]:
+            score += 10
+            details.append("Freeze revoked +10")
+        else:
+            score -= 10
+            details.append("Freeze active -10")
+        if rug["lp_locked"]:
+            score += 15
+            details.append("LP locked +15")
+        else:
+            score -= 10
+            details.append("LP not locked -10")
+        if rug["top5_holder_pct"] > 50:
+            score -= 20
+            details.append(f"Top5 hold {rug['top5_holder_pct']}% -20")
+        elif rug["top5_holder_pct"] > 30:
+            score -= 10
+            details.append(f"Top5 hold {rug['top5_holder_pct']}% -10")
+        else:
+            score += 10
+            details.append(f"Top5 hold {rug['top5_holder_pct']}% +10")
+        if rug["risk_count"] > 5:
+            score -= 15
+            details.append(f"{rug['risk_count']} risks -15")
+        elif rug["risk_count"] > 2:
+            score -= 5
+            details.append(f"{rug['risk_count']} risks -5")
+    wallets_buying = 0
+    for waddr, wdata in tracked_wallets.items():
+        recent = wdata.get("recent_buys", [])
+        for buy in recent:
+            if buy.get("mint") == mint:
+                wallets_buying += 1
+                break
+    if wallets_buying >= 3:
+        score += 20
+        details.append(f"{wallets_buying} wallets buying +20")
+    elif wallets_buying >= 2:
+        score += 10
+        details.append(f"{wallets_buying} wallets buying +10")
+    score = max(0, min(100, score))
+    if score >= 75:
+        rating = "STRONG BUY"
+    elif score >= 55:
+        rating = "MODERATE"
+    elif score >= 35:
+        rating = "RISKY"
     else:
-        main_loop()
+        rating = "AVOID"
+    return {"score": score, "rating": rating, "details": details, "rug": rug}
+
+# ============================================================
+# CONTRACT ANALYZER
+# ============================================================
+
+def analyze_contract(mint):
+    meta = get_token_metadata(mint)
+    supply = get_token_supply(mint)
+    holders = get_token_holders(mint)
+    scoring = score_token(mint)
+    rug = scoring.get("rug")
+    name = "Unknown"
+    symbol = "???"
+    if meta:
+        on_chain = meta.get("onChainMetadata", {})
+        off_chain = meta.get("offChainMetadata", {})
+        if on_chain and on_chain.get("metadata"):
+            md = on_chain["metadata"].get("data", {})
+            name = md.get("name", name)
+            symbol = md.get("symbol", symbol)
+        if off_chain and off_chain.get("metadata"):
+            name = off_chain["metadata"].get("name", name)
+            symbol = off_chain["metadata"].get("symbol", symbol)
+    lines = []
+    lines.append("\U0001f50d <b>D2RIUSS Contract Analysis</b>")
+    lines.append("\u2500" * 20)
+    lines.append(f"<b>Token:</b> {name} (${symbol})")
+    lines.append(f"<b>CA:</b> <code>{mint}</code>")
+    lines.append(f"<b>Supply:</b> {supply:,.0f}")
+    lines.append(f"<b>Holders:</b> ~{holders}+ (top accounts)")
+    lines.append("")
+    lines.append("\U0001f6e1 <b>Security Check:</b>")
+    if rug:
+        mint_s = "\u2705 Revoked" if rug["mint_disabled"] else "\u274c ACTIVE"
+        freeze_s = "\u2705 Revoked" if rug["freeze_disabled"] else "\u274c ACTIVE"
+        lp_s = "\u2705 Locked" if rug["lp_locked"] else "\u274c NOT LOCKED"
+        lines.append(f"  Mint Authority: {mint_s}")
+        lines.append(f"  Freeze Authority: {freeze_s}")
+        lines.append(f"  LP: {lp_s}")
+        lines.append(f"  Top 5 Holders: {rug['top5_holder_pct']}%")
+        lines.append(f"  Risk Flags: {rug['risk_count']}")
+    else:
+        lines.append("  RugCheck data unavailable")
+    lines.append("")
+    lines.append(f"\U0001f4ca <b>D2RIUSS Score: {scoring['score']}/100</b>")
+    lines.append(f"<b>Rating: {scoring['rating']}</b>")
+    lines.append("")
+    lines.append("<b>Breakdown:</b>")
+    for d in scoring["details"]:
+        lines.append(f"  \u2022 {d}")
+    lines.append("")
+    lines.append(f'\U0001f517 <a href="https://dexscreener.com/solana/{mint}">DexScreener</a> | <a href="https://rugcheck.xyz/tokens/{mint}">RugCheck</a> | <a href="https://solscan.io/token/{mint}">Solscan</a>')
+    return "\n".join(lines)
+
+# ============================================================
+# WALLET DISCOVERY
+# ============================================================
+
+def discover_wallets_from_token(mint, token_name="Unknown"):
+    print(f"[DISCOVER] Scanning {token_name} ({mint[:8]}...) for smart wallets")
+    found = 0
+    sigs = get_signatures(mint, limit=20)
+    if not sigs:
+        return found
+    for sig_info in sigs:
+        sig = sig_info.get("signature")
+        if not sig:
+            continue
+        tx = get_transaction(sig)
+        if not tx:
+            continue
+        tx_type = tx.get("type", "")
+        if tx_type not in ["SWAP", "TRANSFER"]:
+            continue
+        fee_payer = tx.get("feePayer", "")
+        if not fee_payer or fee_payer in tracked_wallets:
+            continue
+        if len(fee_payer) < 32:
+            continue
+        token_transfers = tx.get("tokenTransfers", [])
+        for tt in token_transfers:
+            if tt.get("mint") == mint:
+                tracked_wallets[fee_payer] = {
+                    "name": f"Discovered_{token_name}_{found+1}",
+                    "source": token_name,
+                    "discovered": datetime.now().isoformat(),
+                    "recent_buys": [],
+                    "tx_count": 0,
+                }
+                wallet_scores[fee_payer]["total"] += 1
+                found += 1
+                print(f"  [+] Found wallet: {fee_payer[:16]}...")
+                if found >= 5:
+                    return found
+                break
+        time.sleep(0.3)
+    return found
+
+def init_wallets():
+    print("[INIT] Loading elite wallets...")
+    for addr, info in ELITE_WALLETS.items():
+        tracked_wallets[addr] = {
+            "name": info["name"],
+            "source": info["source"],
+            "discovered": datetime.now().isoformat(),
+            "recent_buys": [],
+            "tx_count": 0,
+        }
+        wallet_scores[addr]["wins"] = info["wins"]
+        wallet_scores[addr]["total"] = info["total"]
+    print(f"[INIT] Loaded {len(ELITE_WALLETS)} elite wallets")
+    seeds = list(SEED_TOKENS.items())
+    random.shuffle(seeds)
+    for mint, name in seeds[:2]:
+        found = discover_wallets_from_token(mint, name)
+        print(f"[INIT] Discovered {found} wallets from {name}")
+        time.sleep(1)
+    print(f"[INIT] Total wallets tracking: {len(tracked_wallets)}")
+
+# ============================================================
+# WALLET MONITORING
+# ============================================================
+
+def extract_token_info(meta):
+    name = "Unknown"
+    symbol = "???"
+    if meta:
+        on_chain = meta.get("onChainMetadata", {})
+        off_chain = meta.get("offChainMetadata", {})
+        if on_chain and on_chain.get("metadata"):
+            md = on_chain["metadata"].get("data", {})
+            name = md.get("name", name)
+            symbol = md.get("symbol", symbol)
+        if off_chain and off_chain.get("metadata"):
+            name = off_chain["metadata"].get("name", name)
+            symbol = off_chain["metadata"].get("symbol", symbol)
+    return name, symbol
+
+def check_wallet_activity(wallet_addr, wallet_info):
+    alerts = []
+    sigs = get_signatures(wallet_addr, limit=3)
+    if not sigs:
+        return alerts
+    for sig_info in sigs:
+        sig = sig_info.get("signature", "")
+        if not sig or sig in alerted_tokens:
+            continue
+        tx = get_transaction(sig)
+        if not tx:
+            continue
+        if tx.get("type", "") != "SWAP":
+            continue
+        token_transfers = tx.get("tokenTransfers", [])
+        native_transfers = tx.get("nativeTransfers", [])
+        sol_spent = 0
+        token_received = None
+        token_amount = 0
+        for nt in native_transfers:
+            if nt.get("fromUserAccount") == wallet_addr:
+                sol_spent += nt.get("amount", 0) / 1e9
+        for tt in token_transfers:
+            m = tt.get("mint", "")
+            if m == WSOL or m in STABLECOINS:
+                continue
+            if tt.get("toUserAccount") == wallet_addr:
+                token_received = m
+                token_amount = tt.get("tokenAmount", 0)
+        if not token_received or sol_spent < 0.1:
+            continue
+        alerted_tokens.add(sig)
+        wallet_info["recent_buys"].append({
+            "mint": token_received, "sol_spent": sol_spent,
+            "amount": token_amount, "time": datetime.now().isoformat(), "sig": sig,
+        })
+        wallet_info["tx_count"] = wallet_info.get("tx_count", 0) + 1
+        meta = get_token_metadata(token_received)
+        token_name, token_symbol = extract_token_info(meta)
+        scoring = score_token(token_received)
+        wname = wallet_info.get("name", wallet_addr[:12])
+        ws = wallet_scores[wallet_addr]
+        win_rate = (ws["wins"] / ws["total"] * 100) if ws["total"] > 0 else 0
+        lines = []
+        lines.append("\U0001f6a8 <b>D2RIUSS ALPHA ALERT</b> \U0001f6a8")
+        lines.append("\u2500" * 20)
+        lines.append(f"\U0001f4b0 <b>{token_name}</b> (${token_symbol})")
+        lines.append(f"\U0001f4cb CA: <code>{token_received}</code>")
+        lines.append("")
+        lines.append(f"\U0001f46b <b>Wallet:</b> {wname}")
+        lines.append(f"\U0001f4b5 <b>Spent:</b> {sol_spent:.2f} SOL")
+        lines.append(f"\U0001f4c8 <b>Win Rate:</b> {win_rate:.0f}% ({ws['wins']}/{ws['total']})")
+        lines.append("")
+        lines.append(f"\U0001f4ca <b>D2RIUSS Score: {scoring['score']}/100</b>")
+        lines.append(f"<b>Rating: {scoring['rating']}</b>")
+        lines.append("")
+        if scoring["details"]:
+            lines.append("<b>Analysis:</b>")
+            for d in scoring["details"]:
+                lines.append(f"  \u2022 {d}")
+            lines.append("")
+        lines.append(f'<a href="https://dexscreener.com/solana/{token_received}">DexScreener</a> | <a href="https://rugcheck.xyz/tokens/{token_received}">RugCheck</a> | <a href="https://solscan.io/token/{token_received}">Solscan</a>')
+        alerts.append("\n".join(lines))
+        discovered_tokens[token_received] = {
+            "name": token_name, "symbol": token_symbol,
+            "discovered_by": wallet_addr, "wallet_name": wname,
+            "sol_spent": sol_spent, "score": scoring["score"],
+            "time": datetime.now().isoformat(),
+        }
+    return alerts
+
+# ============================================================
+# TELEGRAM COMMANDS
+# ============================================================
+
+def handle_commands():
+    updates = tg_get_updates()
+    for update in updates:
+        msg_data = update.get("message", {})
+        text = msg_data.get("text", "").strip()
+        chat_id = str(msg_data.get("chat", {}).get("id", ""))
+        if chat_id != TELEGRAM_CHAT_ID:
+            continue
+        if not text.startswith("/"):
+            continue
+        parts = text.split(maxsplit=1)
+        cmd = parts[0].lower().split("@")[0]
+        arg = parts[1] if len(parts) > 1 else ""
+        print(f"[CMD] {cmd} {arg[:20]}")
+        if cmd == "/start" or cmd == "/help":
+            cmd_help()
+        elif cmd == "/analyze":
+            cmd_analyze(arg)
+        elif cmd == "/score":
+            cmd_score(arg)
+        elif cmd == "/wallets":
+            cmd_wallets()
+        elif cmd == "/addwallet":
+            cmd_addwallet(arg)
+        elif cmd == "/stats":
+            cmd_stats()
+        elif cmd == "/top":
+            cmd_top()
+        else:
+            tg_send(f"\u2753 Unknown command: {cmd}\nUse /help to see available commands.")
+
+def cmd_help():
+    lines = []
+    lines.append("\U0001f916 <b>D2RIUSS Alpha Tracker v2.0</b>")
+    lines.append("\u2500" * 20)
+    lines.append("")
+    lines.append("<b>Commands:</b>")
+    lines.append("/analyze CA - Full contract analysis")
+    lines.append("/score CA - Quick safety score")
+    lines.append("/wallets - List tracked wallets")
+    lines.append("/addwallet ADDRESS NAME - Add wallet")
+    lines.append("/top - Top discoveries today")
+    lines.append("/stats - Bot statistics")
+    lines.append("/help - This message")
+    lines.append("")
+    lines.append("\U0001f514 Auto-alerts when smart wallets buy new tokens")
+    tg_send("\n".join(lines))
+
+def cmd_analyze(ca):
+    ca = ca.strip()
+    if len(ca) < 32:
+        tg_send("\u26a0\ufe0f Send a valid Solana contract address.\nUsage: /analyze <CA>")
+        return
+    tg_send(f"\U0001f50d Analyzing {ca[:8]}...{ca[-4:]}...")
+    result = analyze_contract(ca)
+    tg_send(result)
+
+def cmd_score(ca):
+    ca = ca.strip()
+    if len(ca) < 32:
+        tg_send("\u26a0\ufe0f Send a valid Solana contract address.\nUsage: /score <CA>")
+        return
+    scoring = score_token(ca)
+    lines = []
+    lines.append(f"\U0001f4ca <b>Quick Score: {scoring['score']}/100</b>")
+    lines.append(f"<b>Rating: {scoring['rating']}</b>")
+    lines.append("")
+    for d in scoring["details"]:
+        lines.append(f"  \u2022 {d}")
+    lines.append("")
+    lines.append(f"<code>{ca}</code>")
+    tg_send("\n".join(lines))
+
+def cmd_wallets():
+    lines = []
+    lines.append(f"\U0001f46b <b>Tracked Wallets ({len(tracked_wallets)})</b>")
+    lines.append("\u2500" * 20)
+    lines.append("")
+    sorted_w = sorted(tracked_wallets.items(), key=lambda x: wallet_scores[x[0]]["wins"], reverse=True)
+    for i, (addr, info) in enumerate(sorted_w[:15]):
+        ws = wallet_scores[addr]
+        wr = (ws["wins"] / ws["total"] * 100) if ws["total"] > 0 else 0
+        lines.append(f"{i+1}. <b>{info['name']}</b>")
+        lines.append(f"   {addr[:8]}...{addr[-4:]} | WR: {wr:.0f}%")
+    if len(tracked_wallets) > 15:
+        lines.append(f"\n... and {len(tracked_wallets) - 15} more")
+    tg_send("\n".join(lines))
+
+def cmd_addwallet(arg):
+    parts = arg.strip().split(maxsplit=1)
+    if len(parts) < 1 or len(parts[0]) < 32:
+        tg_send("\u26a0\ufe0f Usage: /addwallet ADDRESS NAME\nExample: /addwallet ABC123... My Whale")
+        return
+    addr = parts[0]
+    name = parts[1] if len(parts) > 1 else f"Custom_{len(tracked_wallets)+1}"
+    if addr in tracked_wallets:
+        tg_send(f"\u26a0\ufe0f Wallet already tracked as: {tracked_wallets[addr]['name']}")
+        return
+    tracked_wallets[addr] = {
+        "name": name, "source": "manual",
+        "discovered": datetime.now().isoformat(),
+        "recent_buys": [], "tx_count": 0,
+    }
+    wallet_scores[addr] = {"wins": 0, "total": 0}
+    tg_send(f"\u2705 Added wallet: <b>{name}</b>\n<code>{addr}</code>")
+
+def cmd_stats():
+    uptime = datetime.now() - bot_start_time
+    hours = uptime.total_seconds() / 3600
+    lines = []
+    lines.append("\U0001f4ca <b>D2RIUSS Alpha Tracker Stats</b>")
+    lines.append("\u2500" * 20)
+    lines.append("")
+    lines.append(f"\u23f1 <b>Uptime:</b> {hours:.1f}h")
+    lines.append(f"\U0001f504 <b>Scan Cycles:</b> {scan_cycle}")
+    lines.append(f"\U0001f46b <b>Wallets Tracked:</b> {len(tracked_wallets)}")
+    lines.append(f"\U0001f48e <b>Tokens Discovered:</b> {len(discovered_tokens)}")
+    lines.append(f"\U0001f6a8 <b>Alerts Sent:</b> {len(alerted_tokens)}")
+    lines.append("")
+    lines.append("<b>Version:</b> 2.0")
+    tg_send("\n".join(lines))
+
+def cmd_top():
+    if not discovered_tokens:
+        tg_send("\U0001f4ed No tokens discovered yet. Monitoring...")
+        return
+    sorted_t = sorted(discovered_tokens.items(), key=lambda x: x[1].get("score", 0), reverse=True)
+    lines = []
+    lines.append("\U0001f3c6 <b>Top Discoveries</b>")
+    lines.append("\u2500" * 20)
+    lines.append("")
+    for i, (mint, info) in enumerate(sorted_t[:10]):
+        lines.append(f"{i+1}. <b>{info['name']}</b> (${info['symbol']})")
+        lines.append(f"   Score: {info['score']}/100 | {info['sol_spent']:.1f} SOL")
+        lines.append(f"   By: {info['wallet_name']}")
+        lines.append("")
+    tg_send("\n".join(lines))
+
+# ============================================================
+# MAIN LOOP
+# ============================================================
+
+def main():
+    global scan_cycle
+    print("=" * 50)
+    print("D2RIUSS ALPHA TRACKER v2.0")
+    print("=" * 50)
+    init_wallets()
+    lines = []
+    lines.append("\U0001f7e2 <b>D2RIUSS Alpha Tracker v2.0 ONLINE</b>")
+    lines.append("")
+    lines.append(f"\U0001f46b Tracking {len(tracked_wallets)} wallets")
+    lines.append("\U0001f50d Smart wallet monitoring active")
+    lines.append("\U0001f4ca Token scoring engine ready")
+    lines.append("\U0001f916 Command system active")
+    lines.append("")
+    lines.append("Type /help for commands")
+    tg_send("\n".join(lines))
+    print(f"[READY] Monitoring {len(tracked_wallets)} wallets")
+    print("[READY] Command system active")
+    while True:
+        try:
+            scan_cycle += 1
+            handle_commands()
+            wallet_list = list(tracked_wallets.items())
+            if not wallet_list:
+                print(f"[CYCLE {scan_cycle}] No wallets to monitor")
+                time.sleep(30)
+                continue
+            wallets_per_cycle = min(5, len(wallet_list))
+            start_idx = (scan_cycle * wallets_per_cycle) % len(wallet_list)
+            for i in range(wallets_per_cycle):
+                idx = (start_idx + i) % len(wallet_list)
+                addr, info = wallet_list[idx]
+                alerts = check_wallet_activity(addr, info)
+                for alert in alerts:
+                    tg_send(alert)
+                    time.sleep(1)
+                time.sleep(0.5)
+            if scan_cycle % 100 == 0:
+                status = f"\U0001f504 <b>Cycle {scan_cycle}</b> | "
+                status += f"\U0001f46b {len(tracked_wallets)} wallets | "
+                status += f"\U0001f48e {len(discovered_tokens)} tokens | "
+                status += f"\U0001f6a8 {len(alerted_tokens)} alerts"
+                tg_send(status)
+                print(f"[STATUS] Cycle {scan_cycle} | {len(tracked_wallets)} wallets | {len(discovered_tokens)} tokens")
+            if scan_cycle % 200 == 0 and discovered_tokens:
+                recent = sorted(discovered_tokens.items(), key=lambda x: x[1].get("score", 0), reverse=True)
+                if recent:
+                    best_mint = recent[0][0]
+                    best_name = recent[0][1].get("name", "Unknown")
+                    found = discover_wallets_from_token(best_mint, best_name)
+                    if found > 0:
+                        tg_send(f"\U0001f50d Discovered {found} new wallets from {best_name}")
+            time.sleep(15)
+        except KeyboardInterrupt:
+            print("\n[SHUTDOWN] Stopping D2RIUSS Alpha Tracker...")
+            tg_send("\U0001f534 D2RIUSS Alpha Tracker v2.0 shutting down...")
+            break
+        except Exception as e:
+            print(f"[ERROR] Cycle {scan_cycle}: {e}")
+            time.sleep(30)
+
+if __name__ == "__main__":
+    main()
