@@ -20,7 +20,7 @@ def telegram(msg):
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     data = {"chat_id": chat_id, "text": msg, "parse_mode": "Markdown"}
     try:
-        r = requests.post(url, json=data, timeout=10)
+        requests.post(url, data=payload, timeout=10)
         print(f"Resultado Telegram: {r.status_code} - {r.text}")
     except Exception as e:
         print(f"Error enviando a Telegram: {e}")
