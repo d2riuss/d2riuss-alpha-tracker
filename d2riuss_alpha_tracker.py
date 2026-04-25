@@ -1,9 +1,7 @@
 import asyncio
 import requests
-import json
-import os
 
-# --- D2RIUSS ALPHA V1.3.5 (DEBUG MODE) ---
+# --- DARIUS ALPHA v1.3.7 ---
 token = "8648370563:AAEcvkKvDOMUHcYRFb4IGVE5UicnZdWM88"
 chat_id = "1454858664"
 api_key = "ac619ff6-9d50-4a09-99ff-5a03c556302b"
@@ -16,42 +14,41 @@ WALLETS = [
     "7ArG5mP9A2eE1zV8M6N7rG5uH3pW4L6YvE6M6KqK9vY7"
 ]
 
-def telegram(msg):
+def telegram_msg(texto):
     url = f"https://api.telegram.org/bot{token}/sendMessage"
-    data = {"chat_id": chat_id, "text": msg, "parse_mode": "Markdown"}
+    datos = {"chat_id": chat_id, "text": texto, "parse_mode": "Markdown", "disable_web_page_preview": True}
     try:
-        requests.post(url, data=payload, timeout=10)
-        print(f"Resultado Telegram: {r.status_code} - {r.text}")
+        r = requests.post(url, json=datos, timeout=10)
+        print(f"Enviado a Telegram: {r.status_code}")
     except Exception as e:
-        print(f"Error enviando a Telegram: {e}")
+        print(f"Error Telegram: {e}")
 
 async def main():
-    print("--- INICIANDO v1.3.5 ---")
-    telegram("🚨 *TEST DE CONEXION v1.3.5*\nSi lees esto, el bot ya puede avisarte de las compras.")
+    print("--- DARIUS ALPHA v1.3.7 ONLINE ---")
+    telegram_msg("🚀 *DARIUS ALPHA v1.3.7 CONECTADO*\n\nVigilando las 5 carteras élite.")
     
     vistos = set()
     while True:
         try:
             for w in WALLETS:
-                api_url = f"https://api.helius.xyz/v0/addresses/{w}/transactions?api-key={api_key}"
-                r = requests.get(api_url, timeout=15)
-                if r.status_code == 200:
-                    txs = r.json()
-                    for tx in txs:
-                        s = tx.get('signature')
-                        if s and s not in vistos:
-                            vistos.add(s)
+                url_helius = f"https://api.helius.xyz/v0/addresses/{w}/transactions?api-key={api_key}"
+                res = requests.get(url_helius, timeout=15)
+                if res.status_code == 200:
+                    for tx in res.json():
+                        sig = tx.get('signature')
+                        if sig and sig not in vistos:
+                            vistos.add(sig)
                             if 'tokenTransfers' in tx:
                                 for tr in tx['tokenTransfers']:
                                     if tr.get('toUserAccount') == w:
                                         mint = tr.get('mint')
-                                        telegram(f"💎 *COMPRA ÉLITE*\n\nWallet: `{w[:5]}...` \nToken: `{mint}`\n\n[COMPRAR EN TROJAN](https://t.me/tony_trojanbot?start=r-dariusalpha-{mint})")
+                                        telegram_msg(f"💎 *COMPRA ÉLITE*\nWallet: `{w[:5]}...` \nToken: `{mint}`\n\n[COMPRAR EN TROJAN](https://t.me/tony_trojanbot?start=r-dariusalpha-{mint})")
             
             if len(vistos) > 500: vistos.clear()
-            print("Escaneando carteras... Todo OK")
+            print("Escaneando carteras... OK")
             await asyncio.sleep(40)
         except Exception as e:
-            print(f"Error bucle: {e}")
+            print(f"Fallo bucle: {e}")
             await asyncio.sleep(60)
 
 if __name__ == "__main__":
