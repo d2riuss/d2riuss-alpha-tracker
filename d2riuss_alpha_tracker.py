@@ -3,27 +3,26 @@ import requests
 import os
 
 # ==========================================
-# DARIUS ALPHA TRACKER v1.2 - CONFIG DIRECTA
+# DARIUS ALPHA TRACKER v1.2 - FIX FINAL
 # ==========================================
 
-# TUS CREDENCIALES (Insertadas directamente)
+# TUS CREDENCIALES
 TOKEN = "8648370563:AAGF83lXj8ysvpW0W0wZQgmYyoHVt5UlcNU"
 CHAT_ID = "1454858664"
 HELIUS_KEY = "ac619ff6-9d50-4a09-99ff-5a03c556302b"
 
-# LISTA DE CARTERAS DE ÉLITE (Las 17 que acordamos)
+# LISTA DE CARTERAS DE ÉLITE
 SMART_WALLETS = [
-    "7n7pM2f6e9D6cWzYxL8pGjR5vQn3S1bH4mK9aT8rUvW", # Seed: TRUMP
-    "EbHsu5f6Y9D6cWzYxL8pGjR5vQn3S1bH4mK9aT8rUvW", # Seed: CHILLGUY
-    "3A7pM2f6e9D6cWzYxL8pGjR5vQn3S1bH4mK9aT8rUvX", # Seed: MLG
-    "9W79fWreGhpWJ6rW93uH8uR8Y5V8X5Jp5d6yS1p4W3V", # Elite 1
-    "Hxp3pXN5N5kGqV9WwFwH1n9vS9bH4mK9aT8rUvW7",    # Elite 2
-    "4xp3pXN5N5kGqV9WwFwH1n9vS9bH4mK9aT8rUvW7",    # Elite 3
-    "Ff79fWreGhpWJ6rW93uH8uR8Y5V8X5Jp5d6yS1p4W3V", # Elite 4
-    "Gx79fWreGhpWJ6rW93uH8uR8Y5V8X5Jp5d6yS1p4W3V", # Elite 5
-    "Hx79fWreGhpWJ6rW93uH8uR8Y5V8X5Jp5d6yS1p4W3V", # Elite 6
-    "Ix79fWreGhpWJ6rW93uH8uR8Y5V8X5Jp5d6yS1p4W3V"  # Elite 7
-    # + 7 carteras automáticas adicionales vía descubrimiento
+    "7n7pM2f6e9D6cWzYxL8pGjR5vQn3S1bH4mK9aT8rUvW",
+    "EbHsu5f6Y9D6cWzYxL8pGjR5vQn3S1bH4mK9aT8rUvW",
+    "3A7pM2f6e9D6cWzYxL8pGjR5vQn3S1bH4mK9aT8rUvX",
+    "9W79fWreGhpWJ6rW93uH8uR8Y5V8X5Jp5d6yS1p4W3V",
+    "Hxp3pXN5N5kGqV9WwFwH1n9vS9bH4mK9aT8rUvW7",
+    "4xp3pXN5N5kGqV9WwFwH1n9vS9bH4mK9aT8rUvW7",
+    "Ff79fWreGhpWJ6rW93uH8uR8Y5V8X5Jp5d6yS1p4W3V",
+    "Gx79fWreGhpWJ6rW93uH8uR8Y5V8X5Jp5d6yS1p4W3V",
+    "Hx79fWreGhpWJ6rW93uH8uR8Y5V8X5Jp5d6yS1p4W3V",
+    "Ix79fWreGhpWJ6rW93uH8uR8Y5V8X5Jp5d6yS1p4W3V"
 ]
 
 # URLs DE API
@@ -34,27 +33,40 @@ def send_telegram(message):
     try:
         payload = {"chat_id": CHAT_ID, "text": message, "parse_mode": "Markdown"}
         requests.post(TELEGRAM_URL, json=payload)
-    except Exception as e:
-        print(f"Error enviando Telegram: {e}")
+    except:
+        pass
 
 def get_last_tx(address):
     try:
-        response = requests.get(HELIUS_URL.format(address))
+        response = requests.get(HELIUS_URL.format(address), timeout=10)
         if response.status_code == 200:
             data = response.json()
             if data and len(data) > 0:
                 return data[0]['signature']
-        return None
     except:
         return None
+    return None
 
 def run_tracker():
     print("DARIUS ALPHA v1.2 - SISTEMA ONLINE")
-    send_telegram("🚀 *DARIUS ALPHA v1.2* Iniciado.\n\nMonitoreando 17 carteras de élite en tiempo real.")
+    send_telegram("🚀 *DARIUS ALPHA v1.2* Iniciado.\n\nMonitoreando carteras de élite.")
     
-    last_txs = {address: get_last_tx(address) for address in SMART_WALLETS}
+    last_txs = {}
+    for addr in SMART_WALLETS:
+        last_txs[addr] = get_last_tx(addr)
     
     while True:
-        try:
-            for address in SMART_WALLETS:
+        for address in SMART_WALLETS:
+            try:
                 current_sig = get_last_tx(address)
+                if current_sig and current_sig != last_txs.get(address):
+                    last_txs[address] = current_sig
+                    msg = f"🔥 *MOVIMIENTO DETECTADO*\n\nCartera: `{address[:6]}...{address[-4:]}`\nTX: `https://solscan.io/tx/{current_sig}`"
+                    send_telegram(msg)
+                time.sleep(2)
+            except:
+                time.sleep(5)
+                continue
+
+if __name__ == "__main__":
+    run_tracker()
