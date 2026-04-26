@@ -1,1 +1,1 @@
-worker: python d2riuss_alpha_tracker.py
+web: python d2riuss_alpha_tracker.py
