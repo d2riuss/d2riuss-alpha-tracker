@@ -1,7 +1,13 @@
 import time
 import requests
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
+import os
 
-# CONFIGURACIÓN
+# ==========================================
+# DARIUS ALPHA - VERSIÓN ANTI-CIERRE
+# ==========================================
+
 TOKEN = "8648370563:AAGF83lXj8ysvpW0W0wZQgmYyoHVt5UlcNU"
 CHAT_ID = "1454858664"
 HELIUS_KEY = "ac619ff6-9d50-4a09-99ff-5a03c556302b"
@@ -19,16 +25,28 @@ WALLETS = [
     "Ix79fWreGhpWJ6rW93uH8uR8Y5V8X5Jp5d6yS1p4W3V"
 ]
 
-def enviar(msg):
-    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    requests.post(url, json={"chat_id": CHAT_ID, "text": msg})
+# Servidor web falso para que Railway no lo apague
+class WebServer(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Darius Alpha is Running")
 
-def check():
-    print("SISTEMA DARIUS ONLINE")
-    enviar("✅ Bot Online y Vigilando.")
-    
+def run_web_server():
+    port = int(os.environ.get("PORT", 8080))
+    server = HTTPServer(('0.0.0.0', port), WebServer)
+    server.serve_forever()
+
+def enviar(msg):
+    try:
+        url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+        requests.post(url, json={"chat_id": CHAT_ID, "text": msg})
+    except: pass
+
+def check_loop():
+    print("SISTEMA DARIUS ONLINE - VIGILANDO CARTERAS")
+    enviar("🔥 DARIUS ALPHA ACTIVO - Modo Anti-Cierre")
     ultimas_sigs = {}
-    
     while True:
         for w in WALLETS:
             try:
@@ -39,11 +57,13 @@ def check():
                     if data:
                         sig = data[0]['signature']
                         if w in ultimas_sigs and sig != ultimas_sigs[w]:
-                            enviar(f"🔥 MOVIMIENTO: {w[:5]}...\nhttps://solscan.io/tx/{sig}")
+                            enviar(f"⚠️ MOVIMIENTO: {w[:5]}...\nhttps://solscan.io/tx/{sig}")
                         ultimas_sigs[w] = sig
-            except:
-                pass
-            time.sleep(2)
+                time.sleep(2)
+            except: time.sleep(5)
 
 if __name__ == "__main__":
-    check()
+    # Inicia servidor web en segundo plano
+    threading.Thread(target=run_web_server, daemon=True).start()
+    # Inicia el bot
+    check_loop()
