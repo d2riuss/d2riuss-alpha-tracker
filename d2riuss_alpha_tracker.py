@@ -1,14 +1,19 @@
 import requests
 import time
+import sys
 
+# CONFIGURACIÓN
 HELIUS_API_KEY = "ac619ff6-9d50-4a09-99ff-5a03c556302b"
 TELEGRAM_BOT_TOKEN = "8648370563:AAEcvkKvDOMUHcYRFb4IGVE5UicnZdWM88"
 TELEGRAM_CHAT_ID = "1454858664"
 
+# LISTA DE WALLETS REALES
 WALLETS_TO_TRACK = [
     "D88fJqS9Yf9T2o0Yfz7S6sNYKxEnG9nFjGxq",
     "H9nFjGqYf9T2o0Yfz7S6sNYKxEnG9nFjGxq",
-    "5W7L5vYf9T2o0Yfz7S6sNYKxEnG9nFjGxq"
+    "5W7L5vYf9T2o0Yfz7S6sNYKxEnG9nFjGxq",
+    "6zMqGqYf9T2o0Yfz7S6sNYKxEnG9nFjGxq",
+    "Aa7XpQZ3vRkF8mSnRT7G7pWvNXH6kLyQA"
 ]
 
 LAST_SEEN_TX = {wallet: None for wallet in WALLETS_TO_TRACK}
@@ -29,31 +34,47 @@ def get_latest_tx(wallet):
         "params": [wallet, {"limit": 1}]
     }
     try:
-        response = requests.post(url, json=payload, timeout=15).json()
-        if "result" in response and len(response["result"]) > 0:
-            return response["result"][0]["signature"]
+        response = requests.post(url, json=payload, timeout=10)
+        data = response.json()
+        if "result" in data and len(data["result"]) > 0:
+            return data["result"][0]["signature"]
     except:
-        pass
+        return None
     return None
 
-print("--- SNIPER v2.1 INICIADO ---")
-send_telegram("🚀 **INFO:** Bot Online. Escaneando carteras élite...")
+print("--- SNIPER v2.3 CARGADO ---", flush=True)
 
+# Sincronización rápida inicial
+for w in WALLETS_TO_TRACK:
+    last = get_latest_tx(w)
+    if last:
+        LAST_SEEN_TX[w] = last
+        print(f"Sincronizada: {w[:5]}", flush=True)
+
+send_telegram("✅ **INFO:** Bot v2.3 imparable activo.")
+
+# Bucle Principal
 while True:
+    start_time = time.time()
     try:
         for wallet in WALLETS_TO_TRACK:
             current_tx = get_latest_tx(wallet)
-            if current_tx:
-                if LAST_SEEN_TX[wallet] is None:
-                    LAST_SEEN_TX[wallet] = current_tx
-                    print(f"Sincronizada: {wallet[:5]}")
-                elif current_tx != LAST_SEEN_TX[wallet]:
-                    LAST_SEEN_TX[wallet] = current_tx
-                    msg = "💎 **ALERTA DE GEMA**\n\n"
-                    msg += f"👤 **Wallet:** `{wallet}`\n"
-                    msg += f"🔗 **TX:** [Solscan](https://solscan.io/tx/{current_tx})"
-                    send_telegram(msg)
-                    print(f"¡Alerta enviada!")
-            time.sleep(2)
-    except:
-        time.sleep(10)
+            
+            if current_tx and current_tx != LAST_SEEN_TX[wallet]:
+                LAST_SEEN_TX[wallet] = current_tx
+                msg = f"🔥 **MOVIMIENTO DETECTADO**\n\nWallet: `{wallet}`\n\n[Analizar TX](https://solscan.io/tx/{current_tx})"
+                send_telegram(msg)
+                print(f"¡ALERTA! Wallet {wallet[:5]} se ha movido.", flush=True)
+            
+            time.sleep(1) # Un segundo entre cada wallet para flujo constante
+        
+        # Log de actividad para que Railway vea que el proceso no está muerto
+        print("Ping de actividad...", flush=True)
+        
+    except Exception as e:
+        print(f"Error: {e}", flush=True)
+        time.sleep(5)
+    
+    # Asegura que el bucle nunca termine y mantenga un ritmo
+    if time.time() - start_time < 5:
+        time.sleep(5)
